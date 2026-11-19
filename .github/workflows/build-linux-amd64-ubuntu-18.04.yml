@@ -24,7 +24,7 @@ jobs:
       - name: Compile inside Ubuntu 18.04
         run: |
           mkdir -p "$RUNNER_TEMP/bionic-artifact"
-          docker run --rm --platform linux/amd64 \
+          docker run --rm -i --platform linux/amd64 \
             --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/src" \
             --mount "type=bind,src=$RUNNER_TEMP/bionic-artifact,dst=/out" \
             --env RUST_TARGET --workdir /src/src-tauri "$BUILD_IMAGE" bash -euo pipefail <<'BUILD'
