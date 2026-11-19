@@ -1,0 +1,55 @@
+name: Build Linux amd64 on Ubuntu 18.04
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/build-linux-amd64-ubuntu-18.04.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BUILD_IMAGE: ubuntu:18.04
+      RUST_TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Compile inside Ubuntu 18.04
+        run: |
+          mkdir -p "$RUNNER_TEMP/bionic-artifact"
+          docker run --rm --platform linux/amd64 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/src" \
+            --mount "type=bind,src=$RUNNER_TEMP/bionic-artifact,dst=/out" \
+            --env RUST_TARGET --workdir /src/src-tauri "$BUILD_IMAGE" bash -euo pipefail <<'BUILD'
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential pkg-config ca-certificates curl
+          curl --proto '=https' --tlsv1.2 --retry 3 -fsSL https://sh.rustup.rs -o /tmp/rustup.sh
+          sh /tmp/rustup.sh -y --profile minimal --default-toolchain none
+          . /root/.cargo/env
+          rustc --version
+          getconf GNU_LIBC_VERSION
+          cargo build --locked --release --target "$RUST_TARGET" --bin cc-switch
+          install -m 0755 "target/$RUST_TARGET/release/cc-switch" /out/cc-switch
+          readelf -h /out/cc-switch | grep 'Machine:'
+          readelf --version-info /out/cc-switch | grep -oE 'GLIBC_[0-9.]+' | sort -Vu
+          BUILD
+
+      - name: Verify executable in a clean Ubuntu 18.04 container
+        run: |
+          docker run --rm --platform linux/amd64 \
+            --mount "type=bind,src=$RUNNER_TEMP/bionic-artifact,dst=/out,readonly" \
+            "$BUILD_IMAGE" bash -euc 'getconf GNU_LIBC_VERSION; ldd /out/cc-switch; /out/cc-switch --version'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc-switch-cli-linux-amd64-ubuntu-18.04
+          path: ${{ runner.temp }}/bionic-artifact/cc-switch
+          if-no-files-found: error
